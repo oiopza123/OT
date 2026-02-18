@@ -9,25 +9,56 @@
     <link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;600&display=swap" rel="stylesheet">
     
     <script>
-        // --- LocalStorage Manager ---
-        const DB_KEY_RECORDS = 'ot_tracker_records_v2';
-        const DB_KEY_SETTINGS = 'ot_tracker_settings_v2';
+        // --- Auth & Database Manager ---
+        const DB_KEY_USERS = 'ot_users_db'; // เก็บรายชื่อ User
+        let currentUser = null; // User ที่กำลัง Login อยู่
 
-        const defaultSettings = { baseSalary: 15000, workDays: 30, workHours: 8 };
-
+        // โหลดข้อมูลตาม User ที่ Login
         function loadData() {
-            const savedRecords = localStorage.getItem(DB_KEY_RECORDS);
-            const savedSettings = localStorage.getItem(DB_KEY_SETTINGS);
+            if (!currentUser) return { records: [], settings: defaultSettings };
             
-            return {
-                records: savedRecords ? JSON.parse(savedRecords) : [],
-                settings: savedSettings ? JSON.parse(savedSettings) : defaultSettings
+            const userKey = `ot_data_${currentUser}`;
+            const savedData = localStorage.getItem(userKey);
+            
+            return savedData ? JSON.parse(savedData) : {
+                records: [],
+                settings: { baseSalary: 15000, workDays: 30, workHours: 8 }
             };
         }
 
-        function saveData(records, settings) {
-            if(records) localStorage.setItem(DB_KEY_RECORDS, JSON.stringify(records));
-            if(settings) localStorage.setItem(DB_KEY_SETTINGS, JSON.stringify(settings));
+        // บันทึกข้อมูลของ User นั้นๆ
+        function saveData(data) {
+            if (!currentUser) return;
+            const userKey = `ot_data_${currentUser}`;
+            localStorage.setItem(userKey, JSON.stringify(data));
+        }
+
+        // --- Auth Logic ---
+        function register(username, password) {
+            const users = JSON.parse(localStorage.getItem(DB_KEY_USERS) || '{}');
+            if (users[username]) {
+                alert('ชื่อผู้ใช้นี้มีอยู่แล้ว');
+                return false;
+            }
+            users[username] = password; // ในระบบจริงควรเข้ารหัสก่อน
+            localStorage.setItem(DB_KEY_USERS, JSON.stringify(users));
+            alert('สมัครสมาชิกสำเร็จ! กรุณาเข้าสู่ระบบ');
+            return true;
+        }
+
+        function login(username, password) {
+            const users = JSON.parse(localStorage.getItem(DB_KEY_USERS) || '{}');
+            if (users[username] && users[username] === password) {
+                currentUser = username;
+                return true;
+            }
+            alert('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+            return false;
+        }
+
+        function logout() {
+            currentUser = null;
+            location.reload();
         }
     </script>
 
@@ -37,23 +68,78 @@
         .slide-up { animation: slideUp 0.3s ease-out; }
         @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         dialog::backdrop { background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(2px); }
+        
+        /* Screen Switching */
+        .screen { display: none; }
+        .screen.active { display: block; }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800 pb-20">
 
-    <!-- Main Content -->
-    <div id="main-content" class="max-w-md mx-auto p-4">
+    <!-- ================= AUTH SCREEN (LOGIN / REGISTER) ================= -->
+    <div id="auth-screen" class="screen active max-w-md mx-auto p-6 min-h-screen flex flex-col justify-center">
+        <div class="text-center mb-8">
+            <div class="w-20 h-20 bg-blue-600 rounded-3xl mx-auto mb-4 flex items-center justify-center shadow-xl shadow-blue-200">
+                <i data-lucide="wallet" class="w-10 h-10 text-white"></i>
+            </div>
+            <h1 class="text-3xl font-bold text-slate-800">Salary Tracker</h1>
+            <p class="text-slate-500">ระบบบันทึก OT ส่วนบุคคล</p>
+        </div>
+
+        <div class="bg-white p-6 rounded-3xl shadow-lg border border-slate-100">
+            <!-- Login Form -->
+            <form id="login-form" onsubmit="handleLogin(event)" class="space-y-4">
+                <h2 class="text-xl font-bold mb-4">เข้าสู่ระบบ</h2>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">ชื่อผู้ใช้</label>
+                    <input type="text" name="username" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">รหัสผ่าน</label>
+                    <input type="password" name="password" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
+                    เข้าสู่ระบบ
+                </button>
+                <p class="text-center text-sm text-slate-500 mt-4">
+                    ยังไม่มีบัญชี? <a href="#" onclick="toggleAuthMode('register')" class="text-blue-600 font-bold">สมัครสมาชิก</a>
+                </p>
+            </form>
+
+            <!-- Register Form (Hidden by default) -->
+            <form id="register-form" onsubmit="handleRegister(event)" class="space-y-4 hidden">
+                <h2 class="text-xl font-bold mb-4 text-green-600">สมัครสมาชิกใหม่</h2>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">ตั้งชื่อผู้ใช้</label>
+                    <input type="text" name="username" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">ตั้งรหัสผ่าน</label>
+                    <input type="password" name="password" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none">
+                </div>
+                <button type="submit" class="w-full bg-green-600 text-white font-bold py-3.5 rounded-xl hover:bg-green-700 transition-all shadow-lg shadow-green-200">
+                    ยืนยันการสมัคร
+                </button>
+                <p class="text-center text-sm text-slate-500 mt-4">
+                    มีบัญชีแล้ว? <a href="#" onclick="toggleAuthMode('login')" class="text-blue-600 font-bold">กลับไปเข้าสู่ระบบ</a>
+                </p>
+            </form>
+        </div>
+    </div>
+
+    <!-- ================= APP SCREEN (MAIN CONTENT) ================= -->
+    <div id="app-screen" class="screen max-w-md mx-auto p-4">
         
         <!-- Header -->
         <header class="flex items-center justify-between mb-6 pt-2">
             <div>
                 <h1 class="text-2xl font-bold text-slate-800">Salary Tracker</h1>
-                <p class="text-sm text-slate-500">บันทึกรายได้และโอที</p>
+                <p class="text-sm text-slate-500">สวัสดี, <span id="user-display-name" class="font-bold text-blue-600">User</span></p>
             </div>
-            <div class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-                <i data-lucide="cloud" class="w-3 h-3"></i>
-                GitHub Pages
-            </div>
+            <button onclick="logout()" class="bg-red-50 text-red-500 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 hover:bg-red-100">
+                <i data-lucide="log-out" class="w-3 h-3"></i>
+                ออก
+            </button>
         </header>
 
         <!-- Summary Card -->
@@ -76,8 +162,13 @@
                     </div>
                 </div>
             </div>
-            <!-- Decoration -->
             <div class="absolute -right-6 -top-6 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+        </div>
+
+        <!-- Ad Space -->
+        <div class="mb-6 w-full bg-slate-200 border-2 border-dashed border-slate-300 rounded-xl h-24 flex flex-col items-center justify-center text-slate-400">
+            <span class="text-xs font-bold">พื้นที่โฆษณา</span>
+            <span class="text-[10px]">AdSense / Banner Here</span>
         </div>
 
         <!-- Quick Stats & Settings -->
@@ -181,6 +272,44 @@
         </div>
     </dialog>
 
+    <!-- Modal: Edit OT -->
+    <dialog id="modal-edit" class="modal p-0 rounded-3xl glass shadow-2xl w-full max-w-sm mx-auto">
+        <div class="p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-bold text-lg text-slate-800">แก้ไขรายการ</h3>
+                <button onclick="document.getElementById('modal-edit').close()" class="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-full transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <form onsubmit="handleUpdateOT(event)" class="space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="col-span-1">
+                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">วันที่</label>
+                        <input type="date" id="edit-date" name="date" required 
+                            class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                    <div class="col-span-1">
+                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">จำนวนชม.</label>
+                        <input type="number" step="0.5" id="edit-hours" name="hours" required 
+                            class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">ประเภท</label>
+                    <select id="edit-multiplier" name="multiplier" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="1.5">OT 1.5 เท่า</option>
+                        <option value="2">OT 2.0 เท่า</option>
+                        <option value="3">OT 3.0 เท่า</option>
+                        <option value="1">1.0 เท่า</option>
+                    </select>
+                </div>
+                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200">
+                    บันทึกการแก้ไข
+                </button>
+            </form>
+        </div>
+    </dialog>
+
     <!-- Modal: Confirm Delete -->
     <dialog id="modal-delete" class="modal p-6 rounded-3xl glass shadow-2xl w-full max-w-sm mx-auto">
         <div class="text-center">
@@ -201,9 +330,46 @@
     </dialog>
 
     <script>
-        // --- App Logic ---
+        // --- UI & App Logic ---
         let appData = { records: [], settings: {} };
-        let recordToDeleteId = null; // Store ID for deletion
+        let recordToDeleteId = null;
+        let editingId = null;
+
+        // Toggle Login/Register
+        function toggleAuthMode(mode) {
+            if (mode === 'register') {
+                document.getElementById('login-form').classList.add('hidden');
+                document.getElementById('register-form').classList.remove('hidden');
+            } else {
+                document.getElementById('login-form').classList.remove('hidden');
+                document.getElementById('register-form').classList.add('hidden');
+            }
+        }
+
+        // Handle Login
+        function handleLogin(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            if (login(formData.get('username'), formData.get('password'))) {
+                document.getElementById('user-display-name').textContent = currentUser;
+                document.getElementById('auth-screen').classList.remove('active');
+                document.getElementById('app-screen').classList.add('active');
+                initApp(); // Load user data
+            }
+        }
+
+        // Handle Register
+        function handleRegister(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            if (register(formData.get('username'), formData.get('password'))) {
+                toggleAuthMode('login');
+                // Auto fill login
+                document.querySelector('#login-form [name="username"]').value = formData.get('username');
+            }
+        }
+
+        // --- Core Application (Same as before but loaded dynamically) ---
 
         function formatThaiDate(dateStr) {
             const date = new Date(dateStr);
@@ -220,7 +386,7 @@
             }
         };
 
-        function init() {
+        function initApp() {
             appData = loadData();
             
             const today = new Date().toISOString().split('T')[0];
@@ -287,7 +453,14 @@
                         </div>
                         <div class="text-right">
                             <p class="font-bold text-green-600 text-sm">+${(r.hours * result.hourlyRate * r.multiplier).toLocaleString(undefined, {maximumFractionDigits: 0})}</p>
-                            <button onclick="askDelete(${r.id})" class="text-[10px] text-red-400 hover:text-red-600 mt-1 p-1">ลบ</button>
+                            <div class="flex items-center justify-end gap-2 mt-1">
+                                <button onclick="openEditModal(${r.id})" class="text-[10px] text-slate-400 hover:text-blue-500 flex items-center gap-1 transition-colors">
+                                    <i data-lucide="pencil" class="w-3 h-3"></i> แก้ไข
+                                </button>
+                                <button onclick="askDelete(${r.id})" class="text-[10px] text-slate-400 hover:text-red-500 flex items-center gap-1 transition-colors">
+                                    <i data-lucide="trash-2" class="w-3 h-3"></i> ลบ
+                                </button>
+                            </div>
                         </div>
                     </div>
                 `).join('');
@@ -295,6 +468,7 @@
             lucide.createIcons();
         }
 
+        // --- Data Actions ---
         function handleAddOT(e) {
             e.preventDefault();
             const formData = new FormData(e.target);
@@ -305,7 +479,7 @@
                 multiplier: Number(formData.get('multiplier'))
             };
             appData.records.push(newRecord);
-            saveData(appData.records, null);
+            saveData(appData); // Save whole object
             e.target.reset();
             const today = new Date().toISOString().split('T')[0];
             document.getElementById('date-input').value = today;
@@ -313,7 +487,34 @@
             render();
         }
 
-        // --- Delete Logic (Modal) ---
+        function openEditModal(id) {
+            const r = appData.records.find(item => item.id === id);
+            if(!r) return;
+            editingId = id;
+            document.getElementById('edit-date').value = r.date;
+            document.getElementById('edit-hours').value = r.hours;
+            document.getElementById('edit-multiplier').value = r.multiplier;
+            document.getElementById('modal-edit').showModal();
+        }
+
+        function handleUpdateOT(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const index = appData.records.findIndex(r => r.id === editingId);
+            if (index !== -1) {
+                appData.records[index] = {
+                    ...appData.records[index],
+                    date: formData.get('date'),
+                    hours: Number(formData.get('hours')),
+                    multiplier: Number(formData.get('multiplier'))
+                };
+                saveData(appData);
+                render();
+            }
+            document.getElementById('modal-edit').close();
+            editingId = null;
+        }
+
         function askDelete(id) {
             recordToDeleteId = id;
             document.getElementById('modal-delete').showModal();
@@ -322,7 +523,7 @@
         function executeDelete() {
             if (recordToDeleteId) {
                 appData.records = appData.records.filter(r => r.id !== recordToDeleteId);
-                saveData(appData.records, null);
+                saveData(appData);
                 render();
             }
             document.getElementById('modal-delete').close();
@@ -330,14 +531,13 @@
         }
 
         function confirmClearAll() {
-            if(confirm('ระวัง! ข้อมูลทั้งหมดจะหายไป ยืนยันไหม?')) {
-                localStorage.clear();
-                appData = loadData();
+            if(confirm('ข้อมูลทั้งหมดของคุณจะหายไป ยืนยันไหม?')) {
+                appData.records = [];
+                saveData(appData);
                 render();
             }
         }
 
-        // --- Settings Logic ---
         function openSettings() {
             document.getElementById('setting-salary').value = appData.settings.baseSalary;
             document.getElementById('setting-days').value = appData.settings.workDays;
@@ -353,12 +553,13 @@
                 workDays: Number(formData.get('workDays')),
                 workHours: Number(formData.get('workHours'))
             };
-            saveData(null, appData.settings);
+            saveData(appData);
             document.getElementById('modal-settings').close();
             render();
         }
 
-        window.onload = init;
+        // Initialize Icons
+        lucide.createIcons();
     </script>
 </body>
 </html>
