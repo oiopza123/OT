@@ -1,565 +1,320 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ระบบบันทึก OT & เงินเดือน</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;600&display=swap" rel="stylesheet">
-    
-    <script>
-        // --- Auth & Database Manager ---
-        const DB_KEY_USERS = 'ot_users_db'; // เก็บรายชื่อ User
-        let currentUser = null; // User ที่กำลัง Login อยู่
-
-        // โหลดข้อมูลตาม User ที่ Login
-        function loadData() {
-            if (!currentUser) return { records: [], settings: defaultSettings };
-            
-            const userKey = `ot_data_${currentUser}`;
-            const savedData = localStorage.getItem(userKey);
-            
-            return savedData ? JSON.parse(savedData) : {
-                records: [],
-                settings: { baseSalary: 15000, workDays: 30, workHours: 8 }
-            };
-        }
-
-        // บันทึกข้อมูลของ User นั้นๆ
-        function saveData(data) {
-            if (!currentUser) return;
-            const userKey = `ot_data_${currentUser}`;
-            localStorage.setItem(userKey, JSON.stringify(data));
-        }
-
-        // --- Auth Logic ---
-        function register(username, password) {
-            const users = JSON.parse(localStorage.getItem(DB_KEY_USERS) || '{}');
-            if (users[username]) {
-                alert('ชื่อผู้ใช้นี้มีอยู่แล้ว');
-                return false;
-            }
-            users[username] = password; // ในระบบจริงควรเข้ารหัสก่อน
-            localStorage.setItem(DB_KEY_USERS, JSON.stringify(users));
-            alert('สมัครสมาชิกสำเร็จ! กรุณาเข้าสู่ระบบ');
-            return true;
-        }
-
-        function login(username, password) {
-            const users = JSON.parse(localStorage.getItem(DB_KEY_USERS) || '{}');
-            if (users[username] && users[username] === password) {
-                currentUser = username;
-                return true;
-            }
-            alert('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
-            return false;
-        }
-
-        function logout() {
-            currentUser = null;
-            location.reload();
-        }
-    </script>
-
-    <style>
-        body { font-family: 'Anuphan', sans-serif; }
-        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
-        .slide-up { animation: slideUp 0.3s ease-out; }
-        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        dialog::backdrop { background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(2px); }
-        
-        /* Screen Switching */
-        .screen { display: none; }
-        .screen.active { display: block; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Copy Hub - ตัวช่วยก๊อปข้อความ</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: "Inter", "Noto Sans Thai", sans-serif; }
+  </style>
 </head>
-<body class="bg-slate-50 min-h-screen text-slate-800 pb-20">
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+  <div class="max-w-6xl mx-auto px-4 py-6">
+    <header class="mb-6">
+      <h1 class="text-3xl font-bold">📋 Copy Hub</h1>
+      <p class="text-slate-600">จัดเก็บข้อความเป็นหมวดหมู่ ก๊อปได้ไว เรียงลำดับ/เพิ่ม/ลบ/แก้ไขได้ครบ</p>
+    </header>
 
-    <!-- ================= AUTH SCREEN (LOGIN / REGISTER) ================= -->
-    <div id="auth-screen" class="screen active max-w-md mx-auto p-6 min-h-screen flex flex-col justify-center">
-        <div class="text-center mb-8">
-            <div class="w-20 h-20 bg-blue-600 rounded-3xl mx-auto mb-4 flex items-center justify-center shadow-xl shadow-blue-200">
-                <i data-lucide="wallet" class="w-10 h-10 text-white"></i>
-            </div>
-            <h1 class="text-3xl font-bold text-slate-800">Salary Tracker</h1>
-            <p class="text-slate-500">ระบบบันทึก OT ส่วนบุคคล</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <section class="md:col-span-1 bg-white rounded-2xl shadow p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold">หมวดหมู่</h2>
+          <button id="add-category-btn" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">+ เพิ่ม</button>
+        </div>
+        <div id="category-list" class="space-y-2"></div>
+      </section>
+
+      <section class="md:col-span-2 bg-white rounded-2xl shadow p-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+          <h2 id="category-title" class="text-lg font-semibold">เลือกหมวดหมู่</h2>
+          <button id="add-item-btn" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:bg-slate-300" disabled>+ เพิ่มข้อความ</button>
         </div>
 
-        <div class="bg-white p-6 rounded-3xl shadow-lg border border-slate-100">
-            <!-- Login Form -->
-            <form id="login-form" onsubmit="handleLogin(event)" class="space-y-4">
-                <h2 class="text-xl font-bold mb-4">เข้าสู่ระบบ</h2>
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 mb-1">ชื่อผู้ใช้</label>
-                    <input type="text" name="username" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 mb-1">รหัสผ่าน</label>
-                    <input type="password" name="password" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
-                    เข้าสู่ระบบ
-                </button>
-                <p class="text-center text-sm text-slate-500 mt-4">
-                    ยังไม่มีบัญชี? <a href="#" onclick="toggleAuthMode('register')" class="text-blue-600 font-bold">สมัครสมาชิก</a>
-                </p>
-            </form>
-
-            <!-- Register Form (Hidden by default) -->
-            <form id="register-form" onsubmit="handleRegister(event)" class="space-y-4 hidden">
-                <h2 class="text-xl font-bold mb-4 text-green-600">สมัครสมาชิกใหม่</h2>
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 mb-1">ตั้งชื่อผู้ใช้</label>
-                    <input type="text" name="username" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 mb-1">ตั้งรหัสผ่าน</label>
-                    <input type="password" name="password" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none">
-                </div>
-                <button type="submit" class="w-full bg-green-600 text-white font-bold py-3.5 rounded-xl hover:bg-green-700 transition-all shadow-lg shadow-green-200">
-                    ยืนยันการสมัคร
-                </button>
-                <p class="text-center text-sm text-slate-500 mt-4">
-                    มีบัญชีแล้ว? <a href="#" onclick="toggleAuthMode('login')" class="text-blue-600 font-bold">กลับไปเข้าสู่ระบบ</a>
-                </p>
-            </form>
-        </div>
+        <div id="item-list" class="space-y-3"></div>
+      </section>
     </div>
+  </div>
 
-    <!-- ================= APP SCREEN (MAIN CONTENT) ================= -->
-    <div id="app-screen" class="screen max-w-md mx-auto p-4">
-        
-        <!-- Header -->
-        <header class="flex items-center justify-between mb-6 pt-2">
-            <div>
-                <h1 class="text-2xl font-bold text-slate-800">Salary Tracker</h1>
-                <p class="text-sm text-slate-500">สวัสดี, <span id="user-display-name" class="font-bold text-blue-600">User</span></p>
+  <dialog id="category-dialog" class="rounded-xl p-0 w-full max-w-md backdrop:bg-black/40">
+    <form id="category-form" class="p-5 space-y-3">
+      <h3 id="category-dialog-title" class="text-lg font-semibold">เพิ่มหมวดหมู่</h3>
+      <input id="category-name-input" name="name" required maxlength="60" placeholder="ชื่อหมวดหมู่" class="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      <div class="flex justify-end gap-2">
+        <button type="button" onclick="document.getElementById('category-dialog').close()" class="px-3 py-2 rounded-lg bg-slate-200">ยกเลิก</button>
+        <button type="submit" class="px-3 py-2 rounded-lg bg-blue-600 text-white">บันทึก</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="item-dialog" class="rounded-xl p-0 w-full max-w-xl backdrop:bg-black/40">
+    <form id="item-form" class="p-5 space-y-3">
+      <h3 id="item-dialog-title" class="text-lg font-semibold">เพิ่มข้อความ</h3>
+      <textarea id="item-text-input" name="text" required rows="5" placeholder="ข้อความที่ต้องการก๊อป" class="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+      <div class="flex justify-end gap-2">
+        <button type="button" onclick="document.getElementById('item-dialog').close()" class="px-3 py-2 rounded-lg bg-slate-200">ยกเลิก</button>
+        <button type="submit" class="px-3 py-2 rounded-lg bg-emerald-600 text-white">บันทึก</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    const STORAGE_KEY = 'copy_hub_data_v1';
+
+    const defaultData = {
+      categories: [
+        {
+          id: crypto.randomUUID(),
+          name: 'ข้อความงานขาย',
+          items: [
+            { id: crypto.randomUUID(), text: 'สวัสดีค่ะ สนใจแพ็กเกจไหนสอบถามได้เลยนะคะ 😊' },
+            { id: crypto.randomUUID(), text: 'ขอบคุณที่สนใจ เดี๋ยวแอดมินสรุปราคาให้ทันทีค่ะ' }
+          ]
+        }
+      ],
+      selectedCategoryId: null
+    };
+
+    let state = loadData();
+    if (!state.selectedCategoryId && state.categories[0]) {
+      state.selectedCategoryId = state.categories[0].id;
+      saveData();
+    }
+
+    let editingCategoryId = null;
+    let editingItemId = null;
+
+    function loadData() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return structuredClone(defaultData);
+      try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed.categories)) return structuredClone(defaultData);
+        return parsed;
+      } catch {
+        return structuredClone(defaultData);
+      }
+    }
+
+    function saveData() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function getSelectedCategory() {
+      return state.categories.find(c => c.id === state.selectedCategoryId) || null;
+    }
+
+    function escapeHtml(text) {
+      return text
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    async function copyText(text) {
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const temp = document.createElement('textarea');
+          temp.value = text;
+          document.body.appendChild(temp);
+          temp.select();
+          document.execCommand('copy');
+          temp.remove();
+        }
+        alert('คัดลอกข้อความแล้ว ✅');
+      } catch {
+        alert('ไม่สามารถคัดลอกอัตโนมัติได้ กรุณาคัดลอกด้วยตนเอง');
+      }
+    }
+
+    function render() {
+      const categoryList = document.getElementById('category-list');
+      const itemList = document.getElementById('item-list');
+      const categoryTitle = document.getElementById('category-title');
+      const addItemBtn = document.getElementById('add-item-btn');
+
+      categoryList.innerHTML = state.categories.map(category => {
+        const active = category.id === state.selectedCategoryId;
+        return `
+          <div class="border rounded-xl p-3 ${active ? 'border-blue-500 bg-blue-50' : 'border-slate-200'}">
+            <div class="flex items-center justify-between gap-2">
+              <button onclick="selectCategory('${category.id}')" class="text-left flex-1">
+                <p class="font-medium">${escapeHtml(category.name)}</p>
+                <p class="text-xs text-slate-500">${category.items.length} ข้อความ</p>
+              </button>
+              <div class="flex gap-1 shrink-0">
+                <button onclick="openCategoryDialog('${category.id}')" class="px-2 py-1 text-xs bg-slate-200 rounded">แก้ไข</button>
+                <button onclick="deleteCategory('${category.id}')" class="px-2 py-1 text-xs bg-red-500 text-white rounded">ลบ</button>
+              </div>
             </div>
-            <button onclick="logout()" class="bg-red-50 text-red-500 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 hover:bg-red-100">
-                <i data-lucide="log-out" class="w-3 h-3"></i>
-                ออก
-            </button>
-        </header>
+          </div>
+        `;
+      }).join('') || '<p class="text-sm text-slate-500">ยังไม่มีหมวดหมู่</p>';
 
-        <!-- Summary Card -->
-        <div class="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-3xl p-6 text-white shadow-xl shadow-blue-200 mb-6 relative overflow-hidden">
-            <div class="relative z-10">
-                <div class="flex justify-between items-start mb-2">
-                    <p class="text-blue-100 text-sm font-medium">ยอดรวมเดือนนี้ (ประมาณการ)</p>
-                    <span class="bg-white/20 px-2 py-0.5 rounded text-xs backdrop-blur-sm" id="current-month-label">-</span>
-                </div>
-                <h2 class="text-4xl font-bold mb-6 tracking-tight">฿<span id="display-total">0</span></h2>
-                
-                <div class="grid grid-cols-2 gap-4 border-t border-white/10 pt-4">
-                    <div>
-                        <p class="text-blue-200 text-xs mb-1">เงินเดือน</p>
-                        <p class="font-semibold text-lg">฿<span id="display-base-salary">0</span></p>
-                    </div>
-                    <div class="text-right">
-                        <p class="text-blue-200 text-xs mb-1">ค่า OT สะสม</p>
-                        <p class="font-semibold text-lg text-green-300">+฿<span id="display-ot-pay">0</span></p>
-                    </div>
-                </div>
-            </div>
-            <div class="absolute -right-6 -top-6 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
-        </div>
+      const selected = getSelectedCategory();
+      if (!selected) {
+        categoryTitle.textContent = 'เลือกหมวดหมู่';
+        addItemBtn.disabled = true;
+        itemList.innerHTML = '<p class="text-sm text-slate-500">สร้างหมวดหมู่ก่อนเพื่อเพิ่มข้อความ</p>';
+        return;
+      }
 
-        <!-- Ad Space -->
-        <div class="mb-6 w-full bg-slate-200 border-2 border-dashed border-slate-300 rounded-xl h-24 flex flex-col items-center justify-center text-slate-400">
-            <span class="text-xs font-bold">พื้นที่โฆษณา</span>
-            <span class="text-[10px]">AdSense / Banner Here</span>
-        </div>
+      addItemBtn.disabled = false;
+      categoryTitle.textContent = `หมวดหมู่: ${selected.name}`;
 
-        <!-- Quick Stats & Settings -->
-        <div class="grid grid-cols-2 gap-3 mb-6">
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center">
-                <div class="flex items-center gap-2 mb-2">
-                    <div class="w-8 h-8 bg-orange-100 text-orange-600 rounded-lg flex items-center justify-center">
-                        <i data-lucide="clock" class="w-4 h-4"></i>
-                    </div>
-                    <span class="text-xs text-slate-500">ชั่วโมง OT</span>
-                </div>
-                <p class="font-bold text-xl text-slate-800"><span id="display-ot-hours">0</span> <span class="text-sm font-normal text-slate-400">ชม.</span></p>
-            </div>
-            <button onclick="openSettings()" class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center hover:bg-slate-50 transition-colors text-left">
-                <div class="flex items-center gap-2 mb-2">
-                    <div class="w-8 h-8 bg-slate-100 text-slate-600 rounded-lg flex items-center justify-center">
-                        <i data-lucide="settings-2" class="w-4 h-4"></i>
-                    </div>
-                    <span class="text-xs text-slate-500">ตั้งค่า</span>
-                </div>
-                <p class="font-bold text-xl text-slate-800">แก้ไข <span class="text-sm font-normal text-slate-400">ฐานเงินเดือน</span></p>
-            </button>
-        </div>
+      itemList.innerHTML = selected.items.map((item, index) => `
+        <article class="border border-slate-200 rounded-xl p-3">
+          <p class="whitespace-pre-wrap mb-3 text-sm leading-relaxed">${escapeHtml(item.text)}</p>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="copyItem('${item.id}')" class="px-3 py-1.5 bg-blue-600 text-white rounded text-xs">คัดลอก</button>
+            <button onclick="openItemDialog('${item.id}')" class="px-3 py-1.5 bg-slate-200 rounded text-xs">แก้ไข</button>
+            <button onclick="moveItem('${item.id}', -1)" ${index === 0 ? 'disabled' : ''} class="px-3 py-1.5 bg-amber-500 text-white rounded text-xs disabled:bg-slate-300">เลื่อนขึ้น</button>
+            <button onclick="moveItem('${item.id}', 1)" ${index === selected.items.length - 1 ? 'disabled' : ''} class="px-3 py-1.5 bg-amber-600 text-white rounded text-xs disabled:bg-slate-300">เลื่อนลง</button>
+            <button onclick="deleteItem('${item.id}')" class="px-3 py-1.5 bg-red-500 text-white rounded text-xs">ลบ</button>
+          </div>
+        </article>
+      `).join('') || '<p class="text-sm text-slate-500">ยังไม่มีข้อความในหมวดหมู่นี้</p>';
+    }
 
-        <!-- Add OT Form -->
-        <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 mb-6">
-            <h3 class="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <i data-lucide="plus-circle" class="w-5 h-5 text-blue-500"></i>
-                บันทึก OT
-            </h3>
-            <form onsubmit="handleAddOT(event)" class="space-y-4">
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="col-span-1">
-                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">วันที่</label>
-                        <input type="date" id="date-input" name="date" required onchange="updateDatePreview(this.value)"
-                            class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                        <div id="date-preview" class="text-xs text-blue-600 mt-1.5 font-medium hidden"></div>
-                    </div>
-                    <div class="col-span-1">
-                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">จำนวนชม.</label>
-                        <input type="number" step="0.5" name="hours" placeholder="0.0" required 
-                            class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">ประเภท (ตัวคูณ)</label>
-                    <div class="relative">
-                        <select name="multiplier" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none appearance-none">
-                            <option value="1.5">OT 1.5 เท่า (หลังเลิกงาน)</option>
-                            <option value="2">OT 2.0 เท่า (วันหยุด)</option>
-                            <option value="3">OT 3.0 เท่า (นักขัตฤกษ์)</option>
-                            <option value="1">1.0 เท่า (ชั่วโมงปกติ)</option>
-                        </select>
-                        <i data-lucide="chevron-down" class="absolute right-3 top-3 w-4 h-4 text-slate-400 pointer-events-none"></i>
-                    </div>
-                </div>
-                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 transition-all active:scale-95 shadow-lg shadow-blue-200">
-                    บันทึกรายการ
-                </button>
-            </form>
-        </div>
+    function selectCategory(id) {
+      state.selectedCategoryId = id;
+      saveData();
+      render();
+    }
 
-        <!-- History List -->
-        <div>
-            <div class="flex items-center justify-between mb-3 px-1">
-                <h3 class="font-bold text-slate-800">รายการล่าสุด</h3>
-                <span class="text-xs text-red-400 bg-red-50 px-2 py-1 rounded-md cursor-pointer hover:bg-red-100 transition-colors" onclick="confirmClearAll()">ล้างข้อมูลทั้งหมด</span>
-            </div>
-            <div id="history-list" class="space-y-3 pb-8">
-                <!-- Javascript will populate this -->
-            </div>
-        </div>
-    </div>
+    function openCategoryDialog(categoryId = null) {
+      editingCategoryId = categoryId;
+      const dialog = document.getElementById('category-dialog');
+      const title = document.getElementById('category-dialog-title');
+      const input = document.getElementById('category-name-input');
 
-    <!-- Modal: Settings -->
-    <dialog id="modal-settings" class="modal p-0 rounded-3xl glass shadow-2xl w-full max-w-sm mx-auto">
-        <div class="p-6">
-            <div class="flex items-center justify-between mb-6">
-                <h3 class="font-bold text-lg">ตั้งค่าการคำนวณ</h3>
-                <button onclick="document.getElementById('modal-settings').close()" class="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-full transition-colors">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-            </div>
-            <form onsubmit="handleSaveSettings(event)" class="space-y-4">
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 mb-1">เงินเดือนพื้นฐาน</label>
-                    <input type="number" name="baseSalary" id="setting-salary" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-semibold text-slate-800">
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 mb-1">วันทำงาน/เดือน</label>
-                        <input type="number" name="workDays" id="setting-days" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 mb-1">ชม.ทำงาน/วัน</label>
-                        <input type="number" name="workHours" id="setting-hours" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
-                    </div>
-                </div>
-                <button type="submit" class="w-full bg-slate-900 text-white font-bold py-3.5 rounded-xl mt-2">บันทึก</button>
-            </form>
-        </div>
-    </dialog>
+      if (categoryId) {
+        const category = state.categories.find(c => c.id === categoryId);
+        if (!category) return;
+        title.textContent = 'แก้ไขชื่อหมวดหมู่';
+        input.value = category.name;
+      } else {
+        title.textContent = 'เพิ่มหมวดหมู่';
+        input.value = '';
+      }
+      dialog.showModal();
+      input.focus();
+    }
 
-    <!-- Modal: Edit OT -->
-    <dialog id="modal-edit" class="modal p-0 rounded-3xl glass shadow-2xl w-full max-w-sm mx-auto">
-        <div class="p-6">
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="font-bold text-lg text-slate-800">แก้ไขรายการ</h3>
-                <button onclick="document.getElementById('modal-edit').close()" class="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-full transition-colors">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-            </div>
-            <form onsubmit="handleUpdateOT(event)" class="space-y-4">
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="col-span-1">
-                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">วันที่</label>
-                        <input type="date" id="edit-date" name="date" required 
-                            class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    </div>
-                    <div class="col-span-1">
-                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">จำนวนชม.</label>
-                        <input type="number" step="0.5" id="edit-hours" name="hours" required 
-                            class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">ประเภท</label>
-                    <select id="edit-multiplier" name="multiplier" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                        <option value="1.5">OT 1.5 เท่า</option>
-                        <option value="2">OT 2.0 เท่า</option>
-                        <option value="3">OT 3.0 เท่า</option>
-                        <option value="1">1.0 เท่า</option>
-                    </select>
-                </div>
-                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200">
-                    บันทึกการแก้ไข
-                </button>
-            </form>
-        </div>
-    </dialog>
+    function deleteCategory(categoryId) {
+      const category = state.categories.find(c => c.id === categoryId);
+      if (!category) return;
+      if (!confirm(`ยืนยันลบหมวดหมู่ "${category.name}" ?`)) return;
 
-    <!-- Modal: Confirm Delete -->
-    <dialog id="modal-delete" class="modal p-6 rounded-3xl glass shadow-2xl w-full max-w-sm mx-auto">
-        <div class="text-center">
-            <div class="w-12 h-12 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                <i data-lucide="trash-2" class="w-6 h-6"></i>
-            </div>
-            <h3 class="font-bold text-lg text-slate-800 mb-2">ลบรายการนี้?</h3>
-            <p class="text-slate-500 text-sm mb-6">ข้อมูลจะหายไปและกู้คืนไม่ได้</p>
-            <div class="grid grid-cols-2 gap-3">
-                <button onclick="document.getElementById('modal-delete').close()" class="py-3 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 transition-colors">
-                    ยกเลิก
-                </button>
-                <button onclick="executeDelete()" class="py-3 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 transition-colors shadow-lg shadow-red-200">
-                    ลบเลย
-                </button>
-            </div>
-        </div>
-    </dialog>
+      state.categories = state.categories.filter(c => c.id !== categoryId);
+      if (state.selectedCategoryId === categoryId) {
+        state.selectedCategoryId = state.categories[0]?.id || null;
+      }
+      saveData();
+      render();
+    }
 
-    <script>
-        // --- UI & App Logic ---
-        let appData = { records: [], settings: {} };
-        let recordToDeleteId = null;
-        let editingId = null;
+    document.getElementById('category-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const name = document.getElementById('category-name-input').value.trim();
+      if (!name) return;
 
-        // Toggle Login/Register
-        function toggleAuthMode(mode) {
-            if (mode === 'register') {
-                document.getElementById('login-form').classList.add('hidden');
-                document.getElementById('register-form').classList.remove('hidden');
-            } else {
-                document.getElementById('login-form').classList.remove('hidden');
-                document.getElementById('register-form').classList.add('hidden');
-            }
-        }
+      if (editingCategoryId) {
+        const category = state.categories.find(c => c.id === editingCategoryId);
+        if (category) category.name = name;
+      } else {
+        const newCategory = { id: crypto.randomUUID(), name, items: [] };
+        state.categories.push(newCategory);
+        state.selectedCategoryId = newCategory.id;
+      }
 
-        // Handle Login
-        function handleLogin(e) {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            if (login(formData.get('username'), formData.get('password'))) {
-                document.getElementById('user-display-name').textContent = currentUser;
-                document.getElementById('auth-screen').classList.remove('active');
-                document.getElementById('app-screen').classList.add('active');
-                initApp(); // Load user data
-            }
-        }
+      saveData();
+      render();
+      document.getElementById('category-dialog').close();
+    });
 
-        // Handle Register
-        function handleRegister(e) {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            if (register(formData.get('username'), formData.get('password'))) {
-                toggleAuthMode('login');
-                // Auto fill login
-                document.querySelector('#login-form [name="username"]').value = formData.get('username');
-            }
-        }
+    function openItemDialog(itemId = null) {
+      const selected = getSelectedCategory();
+      if (!selected) return;
 
-        // --- Core Application (Same as before but loaded dynamically) ---
+      editingItemId = itemId;
+      const dialog = document.getElementById('item-dialog');
+      const title = document.getElementById('item-dialog-title');
+      const textarea = document.getElementById('item-text-input');
 
-        function formatThaiDate(dateStr) {
-            const date = new Date(dateStr);
-            return date.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
-        }
+      if (itemId) {
+        const item = selected.items.find(i => i.id === itemId);
+        if (!item) return;
+        title.textContent = 'แก้ไขข้อความ';
+        textarea.value = item.text;
+      } else {
+        title.textContent = 'เพิ่มข้อความ';
+        textarea.value = '';
+      }
 
-        window.updateDatePreview = (val) => {
-            const el = document.getElementById('date-preview');
-            if (val) {
-                el.textContent = `เลือก: ${formatThaiDate(val)}`;
-                el.classList.remove('hidden');
-            } else {
-                el.classList.add('hidden');
-            }
-        };
+      dialog.showModal();
+      textarea.focus();
+    }
 
-        function initApp() {
-            appData = loadData();
-            
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('date-input').value = today;
-            updateDatePreview(today);
-            
-            const months = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
-            document.getElementById('current-month-label').textContent = months[new Date().getMonth()];
+    document.getElementById('item-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const selected = getSelectedCategory();
+      if (!selected) return;
 
-            lucide.createIcons();
-            render();
-        }
+      const text = document.getElementById('item-text-input').value.trim();
+      if (!text) return;
 
-        function calculate() {
-            const { baseSalary, workDays, workHours } = appData.settings;
-            const hourlyRate = baseSalary / (workDays * workHours);
-            const currentMonth = new Date().getMonth();
-            const currentYear = new Date().getFullYear();
+      if (editingItemId) {
+        const item = selected.items.find(i => i.id === editingItemId);
+        if (item) item.text = text;
+      } else {
+        selected.items.push({ id: crypto.randomUUID(), text });
+      }
 
-            const monthlyRecords = appData.records.filter(r => {
-                const d = new Date(r.date);
-                return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-            });
+      saveData();
+      render();
+      document.getElementById('item-dialog').close();
+    });
 
-            let totalOT = 0;
-            let totalHours = 0;
-            monthlyRecords.forEach(r => {
-                totalHours += r.hours;
-                totalOT += r.hours * hourlyRate * r.multiplier;
-            });
+    function copyItem(itemId) {
+      const selected = getSelectedCategory();
+      if (!selected) return;
+      const item = selected.items.find(i => i.id === itemId);
+      if (!item) return;
+      copyText(item.text);
+    }
 
-            return {
-                base: baseSalary,
-                ot: totalOT,
-                total: baseSalary + totalOT,
-                hours: totalHours,
-                hourlyRate: hourlyRate
-            };
-        }
+    function deleteItem(itemId) {
+      const selected = getSelectedCategory();
+      if (!selected) return;
+      selected.items = selected.items.filter(i => i.id !== itemId);
+      saveData();
+      render();
+    }
 
-        function render() {
-            const result = calculate();
+    function moveItem(itemId, direction) {
+      const selected = getSelectedCategory();
+      if (!selected) return;
 
-            document.getElementById('display-base-salary').textContent = result.base.toLocaleString();
-            document.getElementById('display-ot-pay').textContent = result.ot.toLocaleString(undefined, {maximumFractionDigits: 0});
-            document.getElementById('display-total').textContent = result.total.toLocaleString(undefined, {maximumFractionDigits: 0});
-            document.getElementById('display-ot-hours').textContent = result.hours;
+      const index = selected.items.findIndex(i => i.id === itemId);
+      if (index < 0) return;
 
-            const list = document.getElementById('history-list');
-            if (appData.records.length === 0) {
-                list.innerHTML = `<div class="text-center py-10 opacity-50"><i data-lucide="clipboard-list" class="w-12 h-12 mx-auto mb-2 text-slate-300"></i><p class="text-sm text-slate-400">ยังไม่มีรายการ</p></div>`;
-            } else {
-                const sortedRecords = [...appData.records].sort((a, b) => new Date(b.date) - new Date(a.date));
-                list.innerHTML = sortedRecords.map((r, index) => `
-                    <div class="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100 shadow-sm slide-up" style="animation-delay: ${index * 0.05}s">
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs">
-                                ${new Date(r.date).getDate()}
-                            </div>
-                            <div>
-                                <p class="font-bold text-slate-800 text-sm">${formatThaiDate(r.date)}</p>
-                                <p class="text-xs text-slate-500">${r.hours} ชม. × ${r.multiplier}</p>
-                            </div>
-                        </div>
-                        <div class="text-right">
-                            <p class="font-bold text-green-600 text-sm">+${(r.hours * result.hourlyRate * r.multiplier).toLocaleString(undefined, {maximumFractionDigits: 0})}</p>
-                            <div class="flex items-center justify-end gap-2 mt-1">
-                                <button onclick="openEditModal(${r.id})" class="text-[10px] text-slate-400 hover:text-blue-500 flex items-center gap-1 transition-colors">
-                                    <i data-lucide="pencil" class="w-3 h-3"></i> แก้ไข
-                                </button>
-                                <button onclick="askDelete(${r.id})" class="text-[10px] text-slate-400 hover:text-red-500 flex items-center gap-1 transition-colors">
-                                    <i data-lucide="trash-2" class="w-3 h-3"></i> ลบ
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                `).join('');
-            }
-            lucide.createIcons();
-        }
+      const next = index + direction;
+      if (next < 0 || next >= selected.items.length) return;
 
-        // --- Data Actions ---
-        function handleAddOT(e) {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const newRecord = {
-                id: Date.now(),
-                date: formData.get('date'),
-                hours: Number(formData.get('hours')),
-                multiplier: Number(formData.get('multiplier'))
-            };
-            appData.records.push(newRecord);
-            saveData(appData); // Save whole object
-            e.target.reset();
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('date-input').value = today;
-            updateDatePreview(today);
-            render();
-        }
+      [selected.items[index], selected.items[next]] = [selected.items[next], selected.items[index]];
+      saveData();
+      render();
+    }
 
-        function openEditModal(id) {
-            const r = appData.records.find(item => item.id === id);
-            if(!r) return;
-            editingId = id;
-            document.getElementById('edit-date').value = r.date;
-            document.getElementById('edit-hours').value = r.hours;
-            document.getElementById('edit-multiplier').value = r.multiplier;
-            document.getElementById('modal-edit').showModal();
-        }
+    document.getElementById('add-category-btn').addEventListener('click', () => openCategoryDialog());
+    document.getElementById('add-item-btn').addEventListener('click', () => openItemDialog());
 
-        function handleUpdateOT(e) {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const index = appData.records.findIndex(r => r.id === editingId);
-            if (index !== -1) {
-                appData.records[index] = {
-                    ...appData.records[index],
-                    date: formData.get('date'),
-                    hours: Number(formData.get('hours')),
-                    multiplier: Number(formData.get('multiplier'))
-                };
-                saveData(appData);
-                render();
-            }
-            document.getElementById('modal-edit').close();
-            editingId = null;
-        }
-
-        function askDelete(id) {
-            recordToDeleteId = id;
-            document.getElementById('modal-delete').showModal();
-        }
-
-        function executeDelete() {
-            if (recordToDeleteId) {
-                appData.records = appData.records.filter(r => r.id !== recordToDeleteId);
-                saveData(appData);
-                render();
-            }
-            document.getElementById('modal-delete').close();
-            recordToDeleteId = null;
-        }
-
-        function confirmClearAll() {
-            if(confirm('ข้อมูลทั้งหมดของคุณจะหายไป ยืนยันไหม?')) {
-                appData.records = [];
-                saveData(appData);
-                render();
-            }
-        }
-
-        function openSettings() {
-            document.getElementById('setting-salary').value = appData.settings.baseSalary;
-            document.getElementById('setting-days').value = appData.settings.workDays;
-            document.getElementById('setting-hours').value = appData.settings.workHours;
-            document.getElementById('modal-settings').showModal();
-        }
-
-        function handleSaveSettings(e) {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            appData.settings = {
-                baseSalary: Number(formData.get('baseSalary')),
-                workDays: Number(formData.get('workDays')),
-                workHours: Number(formData.get('workHours'))
-            };
-            saveData(appData);
-            document.getElementById('modal-settings').close();
-            render();
-        }
-
-        // Initialize Icons
-        lucide.createIcons();
-    </script>
+    render();
+  </script>
 </body>
 </html>
